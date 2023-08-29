@@ -53,9 +53,9 @@ pub(crate) trait OpAble {
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     fn uring_op(&mut self) -> io_uring::squeue::Entry;
 
-    #[cfg(all(unix, feature = "legacy"))]
+    #[cfg(feature = "legacy")]
     fn legacy_interest(&self) -> Option<(super::legacy::ready::Direction, usize)>;
-    #[cfg(all(unix, feature = "legacy"))]
+    #[cfg(feature = "legacy")]
     fn legacy_call(&mut self) -> io::Result<u32>;
 }
 
@@ -116,7 +116,7 @@ impl<T> Op<T> {
     where
         T: OpAble,
     {
-        #[cfg(all(unix, feature = "legacy"))]
+        #[cfg(feature = "legacy")]
         if is_legacy() {
             return if let Some((dir, id)) = self.data.as_ref().unwrap().legacy_interest() {
                 OpCanceller {
@@ -132,7 +132,7 @@ impl<T> Op<T> {
         }
         OpCanceller {
             index: self.index,
-            #[cfg(all(unix, feature = "legacy"))]
+            #[cfg(feature = "legacy")]
             direction: None,
         }
     }
@@ -161,21 +161,23 @@ impl<T> Drop for Op<T> {
     }
 }
 
+/// Check if current driver is legacy.
 #[allow(unused)]
 #[cfg(not(target_os = "linux"))]
-pub(crate) fn is_legacy() -> bool {
+pub fn is_legacy() -> bool {
     true
 }
 
+/// Check if current driver is legacy.
 #[cfg(target_os = "linux")]
-pub(crate) fn is_legacy() -> bool {
+pub fn is_legacy() -> bool {
     super::CURRENT.with(|inner| inner.is_legacy())
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(crate) struct OpCanceller {
     pub(super) index: usize,
-    #[cfg(all(unix, feature = "legacy"))]
+    #[cfg(feature = "legacy")]
     pub(super) direction: Option<super::legacy::ready::Direction>,
 }
 

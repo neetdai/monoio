@@ -38,7 +38,9 @@ impl SocketAddr {
         let len = self.socklen as usize - offset;
         let path = unsafe { &*(&self.sockaddr.sun_path as *const [libc::c_char] as *const [u8]) };
 
-        if len == 0 {
+        // macOS seems to return a len of 16 and a zeroed sun_path for unnamed addresses
+        if len == 0 || (cfg!(not(any(target_os = "linux", target_os = "android"))) && path[0] == 0)
+        {
             AddressKind::Unnamed
         } else if self.sockaddr.sun_path[0] == 0 {
             AddressKind::Abstract(&path[1..len])
@@ -64,7 +66,24 @@ impl SocketAddr {
         Ok(SocketAddr::from_parts(sockaddr, socklen))
     }
 
-    pub(crate) fn from_parts(sockaddr: libc::sockaddr_un, socklen: libc::socklen_t) -> SocketAddr {
+    pub(crate) fn from_parts(
+        sockaddr: libc::sockaddr_un,
+        mut socklen: libc::socklen_t,
+    ) -> SocketAddr {
+        fn sun_path_offset(addr: &libc::sockaddr_un) -> usize {
+            let base: usize = (addr as *const libc::sockaddr_un).cast::<()>() as usize;
+            let path: usize = (&addr.sun_path as *const libc::c_char).cast::<()>() as usize;
+            path - base
+        }
+
+        if socklen == 0 {
+            // When there is a datagram from unnamed unix socket
+            // linux returns zero bytes of address
+            socklen = sun_path_offset(&sockaddr) as libc::socklen_t; // i.e., zero-length address
+        } else if sockaddr.sun_family != libc::AF_UNIX as libc::sa_family_t {
+            panic!("file descriptor did not correspond to a Unix socket");
+        }
+
         SocketAddr { sockaddr, socklen }
     }
 
@@ -107,6 +126,16 @@ impl SocketAddr {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const libc::sockaddr_un {
+        &self.sockaddr as *const _
+    }
+
+    #[inline]
+    pub(crate) fn len(&self) -> libc::socklen_t {
+        self.socklen
     }
 }
 
@@ -184,8 +213,24 @@ pub(crate) fn pair<T>(flags: libc::c_int) -> io::Result<(T, T)>
 where
     T: FromRawFd,
 {
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    #[cfg(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "illumos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     let flags = flags | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC;
+
+    #[cfg(target_os = "linux")]
+    let flags = {
+        if crate::driver::op::is_legacy() {
+            flags | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK
+        } else {
+            flags | libc::SOCK_CLOEXEC
+        }
+    };
 
     let mut fds = [-1; 2];
     crate::syscall!(socketpair(libc::AF_UNIX, flags, 0, fds.as_mut_ptr()))?;

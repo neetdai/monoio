@@ -68,6 +68,9 @@ pub(crate) struct UringInner {
     // Waker receiver
     #[cfg(feature = "sync")]
     waker_receiver: flume::Receiver<std::task::Waker>,
+
+    // Uring support ext_arg
+    ext_arg: bool,
 }
 
 // When dropping the driver, all in-flight operations must have completed. This
@@ -92,6 +95,7 @@ impl IoUringDriver {
 
         let inner = Rc::new(UnsafeCell::new(UringInner {
             ops: Ops::new(),
+            ext_arg: uring.params().is_feature_ext_arg(),
             uring,
         }));
 
@@ -121,6 +125,7 @@ impl IoUringDriver {
 
         let inner = Rc::new(UnsafeCell::new(UringInner {
             ops: Ops::new(),
+            ext_arg: uring.params().is_feature_ext_arg(),
             uring,
             shared_waker: std::sync::Arc::new(waker::EventWaker::new(waker)),
             eventfd_installed: false,
@@ -233,11 +238,29 @@ impl IoUringDriver {
                 self.install_eventfd(inner, inner.shared_waker.as_raw_fd());
             }
             if let Some(duration) = timeout {
-                self.install_timeout(inner, duration);
+                match inner.ext_arg {
+                    // Submit and Wait with timeout in an TimeoutOp way.
+                    // Better compatibility(5.4+).
+                    false => {
+                        self.install_timeout(inner, duration);
+                        inner.uring.submit_and_wait(1)?;
+                    }
+                    // Submit and Wait with enter args.
+                    // Better performance(5.11+).
+                    true => {
+                        let timespec = timespec(duration);
+                        let args = io_uring::types::SubmitArgs::new().timespec(&timespec);
+                        if let Err(e) = inner.uring.submitter().submit_with_args(1, &args) {
+                            if e.raw_os_error() != Some(libc::ETIME) {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Submit and Wait without timeout
+                inner.uring.submit_and_wait(1)?;
             }
-
-            // Submit and Wait
-            inner.uring.submit_and_wait(1)?;
         } else {
             // Submit only
             inner.uring.submit()?;
@@ -401,7 +424,7 @@ impl UringInner {
             #[cfg(feature = "async-cancel")]
             if !_must_finished {
                 unsafe {
-                    let cancel = io_uring::opcode::AsyncCancel::new(index as u64)
+                    let cancel = opcode::AsyncCancel::new(index as u64)
                         .build()
                         .user_data(u64::MAX);
 
@@ -417,7 +440,7 @@ impl UringInner {
 
     pub(crate) unsafe fn cancel_op(this: &Rc<UnsafeCell<UringInner>>, index: usize) {
         let inner = &mut *this.get();
-        let cancel = io_uring::opcode::AsyncCancel::new(index as u64)
+        let cancel = opcode::AsyncCancel::new(index as u64)
             .build()
             .user_data(u64::MAX);
         if inner.uring.submission().push(&cancel).is_err() {

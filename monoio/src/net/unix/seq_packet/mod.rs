@@ -1,11 +1,9 @@
-//! Unix datagram related.
+//! UnixSeqpacket related.
+//! Only available on linux.
 
 use std::{
     io,
-    os::unix::{
-        net::UnixDatagram as StdUnixDatagram,
-        prelude::{AsRawFd, IntoRawFd, RawFd},
-    },
+    os::unix::prelude::{AsRawFd, RawFd},
     path::Path,
 };
 
@@ -19,30 +17,26 @@ use crate::{
     net::new_socket,
 };
 
-/// UnixDatagram
-pub struct UnixDatagram {
+mod listener;
+pub use listener::UnixSeqpacketListener;
+
+/// UnixSeqpacket
+pub struct UnixSeqpacket {
     fd: SharedFd,
 }
 
-impl UnixDatagram {
+impl UnixSeqpacket {
     pub(crate) fn from_shared_fd(fd: SharedFd) -> Self {
         Self { fd }
     }
 
-    /// Creates a Unix datagram socket bound to the given path.
-    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        StdUnixDatagram::bind(path).and_then(Self::from_std)
-    }
-
-    /// Creates a new `UnixDatagram` which is not bound to any address.
-    pub fn unbound() -> io::Result<Self> {
-        StdUnixDatagram::unbound().and_then(Self::from_std)
-    }
-
     /// Creates an unnamed pair of connected sockets.
     pub fn pair() -> io::Result<(Self, Self)> {
-        let (a, b) = pair(libc::SOCK_DGRAM)?;
-        Ok((Self::from_std(a)?, Self::from_std(b)?))
+        let (a, b) = pair(libc::SOCK_SEQPACKET)?;
+        Ok((
+            Self::from_shared_fd(SharedFd::new(a)?),
+            Self::from_shared_fd(SharedFd::new(b)?),
+        ))
     }
 
     /// Connects the socket to the specified address.
@@ -62,23 +56,12 @@ impl UnixDatagram {
         sockaddr: libc::sockaddr_un,
         socklen: libc::socklen_t,
     ) -> io::Result<Self> {
-        let socket = new_socket(libc::AF_UNIX, libc::SOCK_DGRAM)?;
+        let socket = new_socket(libc::AF_UNIX, libc::SOCK_SEQPACKET)?;
         let op = Op::connect_unix(SharedFd::new(socket)?, sockaddr, socklen)?;
         let completion = op.await;
         completion.meta.result?;
 
         Ok(Self::from_shared_fd(completion.data.fd))
-    }
-
-    /// Creates new `UnixDatagram` from a `std::os::unix::net::UnixDatagram`.
-    pub fn from_std(datagram: StdUnixDatagram) -> io::Result<Self> {
-        match SharedFd::new(datagram.as_raw_fd()) {
-            Ok(shared) => {
-                datagram.into_raw_fd();
-                Ok(Self::from_shared_fd(shared))
-            }
-            Err(e) => Err(e),
-        }
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -162,16 +145,16 @@ impl UnixDatagram {
     }
 }
 
-impl AsRawFd for UnixDatagram {
+impl AsRawFd for UnixSeqpacket {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
     }
 }
 
-impl std::fmt::Debug for UnixDatagram {
+impl std::fmt::Debug for UnixSeqpacket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UnixDatagram")
+        f.debug_struct("UnixSeqpacket")
             .field("fd", &self.fd)
             .finish()
     }

@@ -19,13 +19,11 @@ A thread-per-core Rust runtime with io_uring/epoll/kqueue.
 [zh-readme-url]: README-zh.md
 
 ## Design Goal
-As a runtime based on io_uring/epoll/kqueue, Monoio is designed to be the most efficient and performant thread-per-core Rust runtime with good platform compatibility.
+Monoio is a pure io_uring/epoll/kqueue Rust async runtime. Part of the design has been borrowed from Tokio and Tokio-uring. However, unlike Tokio-uring, Monoio does not run on top of another runtime, rendering it more efficient. 
 
-For some use cases, it is not necessary to make task schedulable between threads. For example, if we want to implement a load balancer like nginx, we may want to write it in a thread-per-core way. The thread local data need not to be shared between threads, so the `Sync` and `Send` will not have to be implemented.
+Moreover, Monoio is designed with a thread-per-core model in mind. Users do not need to worry about tasks being `Send` or `Sync`, as thread local storage can be used safely. In other words, the data does not escape the thread on await points, unlike on work-stealing runtimes such as Tokio. This is because for some use cases, specifically those targeted by this runtime, it is not necessary to make task schedulable between threads. For example, if we were to write a load balancer like NGINX, we would write it in a thread-per-core way. The thread local data does not need to be shared between threads, so the `Sync` and `Send` do not need to be implemented in the first place.
 
-Also, the Monoio is designed to be efficient. To achieve this goal, we enabled many Rust unstable features like GAT; and we designed a whole new IO abstraction to avoid copying, which may cause some compatibility problems.
-
-[Our benchmark](docs/en/benchmark.md) shows that Monoio has a better performance than other common Rust runtimes.
+As you may have guessed, this runtime is primarily targeted at servers, where operations are io-bound on network sockets, and therefore the use of native asynchronous I/O APIs maximizes the throughput of the server. In order for Monoio to be as efficient as possible, we've enabled some unstable Rust features, and we've designed a whole new IO abstraction, which unfortunately may cause some compatibility problems. [Our benchmarks](https://github.com/bytedance/monoio/blob/master/docs/en/benchmark.md) probe that, for our use-cases, Monoio has a better performance than other Rust runtimes.
 
 ## Quick Start
 To use monoio, you need the latest nightly rust toolchain. If you already installed it, please make sure it is the latest version.
@@ -34,11 +32,11 @@ To force using nightly, create a file named `rust-toolchain` and write `nightly`
 
 Also, if you want to use io_uring, you must make sure your kernel supports it([5.6+](docs/en/platform-support.md)). And, memlock is [configured as a proper number](docs/en/memlock.md). If your kernel version does not meet the requirements, you can try to use the legacy driver to start, currently supports Linux and macOS([ref here](/docs/en/use-legacy-driver.md)).
 
-🚧Experimental windows support is on the way, if you want to use windows you must make sure your windows supports it([Windows Build 22000](https://docs.microsoft.com/en-us/windows/win32/api/ioringapi/ns-ioringapi-ioring_capabilities)).
+🚧Experimental windows support is on the way.
 
 Here is a basic example of how to use Monoio.
 
-```rust
+```rust,no_run
 /// A echo example.
 ///
 /// Run the example and `nc 127.0.0.1 50002` in another shell.
@@ -65,7 +63,7 @@ async fn main() {
     }
 }
 
-async fn echo(stream: TcpStream) -> std::io::Result<()> {
+async fn echo(mut stream: TcpStream) -> std::io::Result<()> {
     let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
     let mut res;
     loop {

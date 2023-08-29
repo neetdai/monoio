@@ -114,7 +114,7 @@ impl TcpListener {
         let stream = TcpStream::from_shared_fd(SharedFd::new(fd as _)?);
 
         // Construct SocketAddr
-        let storage = completion.data.addr.0.as_ptr() as *const _ as *const libc::sockaddr_storage;
+        let storage = completion.data.addr.0.as_ptr();
         let addr = unsafe {
             match (*storage).ss_family as libc::c_int {
                 libc::AF_INET => {
@@ -155,7 +155,7 @@ impl TcpListener {
             return Err(operation_canceled());
         }
         let op = Op::accept(&self.fd)?;
-        let _guard = c.assocate_op(op.op_canceller());
+        let _guard = c.associate_op(op.op_canceller());
 
         // Await the completion of the event
         let completion = op.await;
@@ -167,7 +167,7 @@ impl TcpListener {
         let stream = TcpStream::from_shared_fd(SharedFd::new(fd as _)?);
 
         // Construct SocketAddr
-        let storage = completion.data.addr.0.as_ptr() as *const _ as *const libc::sockaddr_storage;
+        let storage = completion.data.addr.0.as_ptr();
         let addr = unsafe {
             match (*storage).ss_family as libc::c_int {
                 libc::AF_INET => {

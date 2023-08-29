@@ -35,11 +35,11 @@ Monoio 就是这样一个 Runtime：它并不像 Tokio 那样通过公平调度�
 
 同时，如果你想使用 io_uring，你需要确保你当前的内核版本是较新的([5.6+](docs/zh/platform-support.md))；并且 memlock 是一个[合适的配置](docs/zh/memlock.md)。如果你的内核版本不满足需求，可以尝试使用 legacy driver 启动([参考这里](/docs/zh/use-legacy-driver.md))，当前支持 Linux 和 macOS。
 
-🚧实验性的 windows 系统支持正在开发中，你需要确保你的 windows 版本支持 ([Windows Build 22000](https://docs.microsoft.com/zh-CN/windows/win32/api/ioringapi/ns-ioringapi-ioring_capabilities))。
+🚧实验性的 windows 系统支持正在开发中。
 
 这是一个非常简单的例子，基于 Monoio 实现一个简单的 echo 服务。运行起来之后你可以通过 `nc 127.0.0.1 50002` 来连接它。
 
-```rust
+```rust,no_run
 /// A echo example.
 ///
 /// Run the example and `nc 127.0.0.1 50002` in another shell.
@@ -66,7 +66,7 @@ async fn main() {
     }
 }
 
-async fn echo(stream: TcpStream) -> std::io::Result<()> {
+async fn echo(mut stream: TcpStream) -> std::io::Result<()> {
     let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
     let mut res;
     loop {

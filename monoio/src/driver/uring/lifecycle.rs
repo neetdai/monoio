@@ -46,6 +46,7 @@ impl<'a> Ref<'a, Lifecycle> {
         }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     pub(crate) fn poll_op(mut self, cx: &mut Context<'_>) -> Poll<CompletionMeta> {
         let ref_mut = &mut *self;
         match ref_mut {
@@ -76,7 +77,8 @@ impl<'a> Ref<'a, Lifecycle> {
                 if let Some(data) = data.take() {
                     *ref_mut = Lifecycle::Ignored(Box::new(data));
                 } else {
-                    *ref_mut = Lifecycle::Ignored(Box::<()>::new_uninit());
+                    *ref_mut = Lifecycle::Ignored(Box::new(())); // () is a ZST, so it does not
+                                                                 // allocate
                 };
                 return false;
             }

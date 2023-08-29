@@ -6,13 +6,13 @@ edition = "2021"
 keywords = ["runtime", "iouring", "async"]
 license = "MIT/Apache-2.0"
 name = "monoio"
-readme = "README.md"
+readme = "../README.md"
 repository = "https://github.com/bytedance/monoio"
-version = "0.1.5"
+version = "0.1.8"
 
 # common dependencies
 [dependencies]
-monoio-macros = { version = "0.0.3", path = "../monoio-macros", optional = true }
+monoio-macros = { version = "0.1.0", path = "../monoio-macros", optional = true }
 
 auto-const-array = "0.2"
 fxhash = "0.2"
@@ -35,7 +35,7 @@ tracing = { version = "0.1", default-features = false, features = [
 ctrlc = { version = "3", optional = true }
 
 # windows dependencies(will be added when windows support finished)
-[dependencies.windows-sys]
+[target.'cfg(windows)'.dependencies.windows-sys]
 features = ["Win32_Foundation", "Win32_Networking_WinSock"]
 version = "0.48.0"
 
@@ -57,7 +57,7 @@ async-cancel = []
 # enanle zero copy(enable SOCK_ZEROCOPY + MSG_ZEROCOPY flag)
 # WARNING: this feature may cause performance degradation
 zero-copy = []
-# splice op(require kernel 5.7+)
+# splice op(requires kernel 5.7+)
 splice = []
 # enable `async main` macros support
 macros = ["monoio-macros"]
@@ -71,7 +71,7 @@ debug = ["tracing"]
 legacy = ["mio"]
 # iouring support
 iouring = []
-# tokio-compatiable(only have effect when legacy is enabled and iouring is not)
+# tokio-compatible(only have effect when legacy is enabled and iouring is not)
 tokio-compat = ["tokio"]
 # signal enables setting ctrl_c handler
 signal = ["ctrlc", "sync"]
